@@ -1,0 +1,25 @@
+# Gradle & Build files
+.gradle/
+build/
+bin/
+out/
+run/
+.freebuff/
+
+# IDE files
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.classpath
+.project
+.settings/
+
+# GitHub workflows (requires workflow OAuth scope to push)
+.github/
+
+# OS files
+.DS_Store
+Thumbs.db
+scratch/

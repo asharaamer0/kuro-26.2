@@ -1,0 +1,136 @@
+plugins {
+    id 'net.fabricmc.fabric-loom' version "${loom_version}"
+    id 'maven-publish'
+}
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+    archivesName = project.archives_base_name
+}
+
+loom {
+    mods {
+        "kuro" {
+            sourceSet sourceSets.main
+        }
+    }
+    runs {
+        client {
+            vmArg "-Djava.library.path=${layout.buildDirectory.dir('imgui-natives').get().asFile.absolutePath}"
+        }
+    }
+}
+
+repositories {
+    mavenLocal()
+    maven {
+        name = 'Fabric'
+        url = 'https://maven.fabricmc.net/'
+    }
+    mavenCentral()
+    maven { url = 'https://jitpack.io' }
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+
+    // --- Dear ImGui Java Binding & LWJGL3 Bridge ---
+    implementation 'io.github.spair:imgui-java-binding:1.90.0'
+    implementation 'io.github.spair:imgui-java-lwjgl3:1.90.0'
+
+    // --- ImGui Native Binaries for OS Compatibility ---
+    implementation 'io.github.spair:imgui-java-natives-windows:1.90.0'
+    implementation 'io.github.spair:imgui-java-natives-linux:1.90.0'
+    implementation 'io.github.spair:imgui-java-natives-macos:1.90.0'
+
+    // --- SOCKS / HTTP Proxy Support (for Server Browser) ---
+    implementation 'io.netty:netty-codec-socks:4.1.100.Final'
+    implementation 'io.netty:netty-handler-proxy:4.1.100.Final'
+
+    // --- MixinExtras (Required for @ModifyReturnValue, @Local, etc.) ---
+    include 'io.github.llamalad7:mixinextras-fabric:0.5.5'
+    annotationProcessor 'io.github.llamalad7:mixinextras-fabric:0.5.5'
+}
+
+processResources {
+    inputs.property "version", project.version
+    inputs.property "minecraft_version", project.minecraft_version
+    inputs.property "loader_version", project.loader_version
+
+    filesMatching("fabric.mod.json") {
+        expand "version": project.version,
+                "minecraft_version": project.minecraft_version,
+                "loader_version": project.loader_version
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    it.options.encoding = "UTF-8"
+    it.options.release = 25
+}
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(25)
+    sourceCompatibility = JavaVersion.VERSION_25
+    targetCompatibility = JavaVersion.VERSION_25
+    withSourcesJar()
+}
+
+tasks.register('sourcesZip', Zip) {
+    archiveBaseName = project.archives_base_name
+    archiveClassifier = 'src'
+    destinationDirectory = layout.buildDirectory.dir('libs')
+    from(projectDir) {
+        include 'src/**'
+        include 'gradle/**'
+        include '.github/**'
+        include 'build.gradle'
+        include 'settings.gradle'
+        include 'gradle.properties'
+        include 'gradlew'
+        include 'gradlew.bat'
+        include 'build.sh'
+        include 'build.bat'
+        include '.gitignore'
+        include 'README.md'
+        include 'LICENSE'
+    }
+}
+
+// Extract ImGui native binaries to build/imgui-natives
+tasks.register('extractImguiNatives', Copy) {
+    from({
+        configurations.runtimeClasspath.filter { it.name.contains('natives') }.collect { zipTree(it) }
+    }) {
+        include 'io/imgui/java/native-bin/*.dll',
+                'io/imgui/java/native-bin/*.so',
+                'io/imgui/java/native-bin/*.dylib'
+        eachFile { path = name }
+        includeEmptyDirs = false
+    }
+    into layout.buildDirectory.dir('imgui-natives')
+}
+
+// Ensure natives are unpacked before client starts
+tasks.named('runClient') {
+    dependsOn tasks.named('extractImguiNatives')
+}
+
+tasks.named('jar', Jar) {
+    from(configurations.runtimeClasspath.filter { 
+        it.name.contains('imgui') || it.name.contains('netty') 
+    }.collect { zipTree(it) }) {
+        exclude 'META-INF/INDEX.LIST'
+        exclude 'META-INF/*.SF'
+        exclude 'META-INF/*.DSA'
+        exclude 'META-INF/*.RSA'
+        exclude 'META-INF/MANIFEST.MF'
+    }
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+assemble.dependsOn('sourcesZip')
